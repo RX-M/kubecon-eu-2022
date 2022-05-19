@@ -1287,36 +1287,16 @@ ubuntu@ip-172-31-24-84:~$
 In this step we'll take a look at ways to reach our cluster based services from outside the cluster.
 
 
-### Host Ports
-
-The easiest way to reach into a cluster from the outside is through a Pod with a host port. Here's an example Pod manifest using Host Port 8080 to forward traffic to the pod on port 80:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: hostportpod
-spec:
-  containers:
-  - name: hp
-    image: nginx
-    ports:
-    - containerPort: 80
-      hostPort: 3322
-```
-
-Cilium requires additional configuration to support hostPort pods so we'll leave this for your reference.
-
-
 ### NodePort Services
 
-As demonstrated earlier, ClusterIPs are virtual, they only exist as rules in IPTables or within so other forwarding system
-(such as Linux IP Virtual Services). So how do we reach a service from outside of the cluster? The kube-proxy and CNI
-plugin only run on cluster nodes.
+As demonstrated earlier, ClusterIPs are virtual, they only exist as rules in IPTables or within some other forwarding
+component of the kernel on nodes in the cluster. So how do we reach a service from outside of the cluster when the
+kube-proxy and CNI plugins creating these forwarding instructions only run on cluster nodes.
 
-There are various ways to get into a cluster but one important way is through a NodePort Service. A NodePort service
-uses a specific port on every host computer in the Kubernetes cluster to forward traffic to pods on the pod network. In
-this way, if you can reach one of the host machines (nodes) you can reach all of the NodePort services in the cluster.
+Well, there are various ways to get into a cluster but one important way is through a NodePort Service. A NodePort
+service uses a specific port on every host computer in the Kubernetes cluster to forward traffic to pods on the pod
+network. In this way, if you can reach one of the host machines (nodes) you can reach all of the NodePort services in
+the cluster.
 
 Create a service using the NodePort type and a node port of 31100:
 
@@ -1355,7 +1335,7 @@ deployment.apps/website created
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Now from you laptop (not the cloud instance lab system), try to curl the public IP of you lab machine on port 31100:
+Now from your laptop (not the cloud instance lab system), try to curl the public IP of your lab machine on port 31100:
 
 ```
 $ curl -s 18.185.35.194:31100
@@ -1394,17 +1374,21 @@ ubuntu@ip-172-31-24-84:~$
 NodePort enabled!
 
 
-### Setup an Ingress Controller
+### Setup an Ingress Controller / Gateway
 
-The downside of externally exposed services is that each set of pods needs its own service. Your clients (in house and
-third party developers, etc.) probably do not want to keep track of a bunch of service names, ports and IPs.
+The downside of externally exposed services, like NodePorts, is that each set of pods needs its own service. Your
+clients (in house developers, third party developers, etc.) probably do not want to keep track of a bunch of service
+names, ports and IPs.
 
 Kubernetes introduced an ingress framework to allow a single externally facing gateway (called an Ingress Controller) to
 route HTTP/HTTPS traffic to multiple backend services.
 
-Like many other networking functions, upstream Kubernetes does not come with an Ingress Controller. There are several
-good, free, open source options. In this lab we will use Emissary, a CNCF project built on top of the Envoy proxy,
-another CNCF project. Emissary implements not only the features required by Kubernetes Ingress but also defines many custom Resources we can use to access functionality well beyond the generic (but portable) basic Kubernetes Ingress.
+Like many other networking functions, upstream Kubernetes does not come with an Ingress Controller, however there are
+several good, free, open source options. In this lab we will use Emissary, a CNCF project built on top of the Envoy
+proxy, another CNCF project. Emissary implements not only the features required by Kubernetes Ingress but also defines
+many custom Resources we can use to access functionality well beyond the generic (but portable) basic Kubernetes
+Ingress. Tools like Emissary are often called Gateways because they provide many advanced features used to control
+inbound application traffic.
 
 Installing Emissary is easy. Like many Kubernetes addons, Emissary prefers to run in its own namespace.
 
@@ -1450,7 +1434,8 @@ ubuntu@ip-172-31-24-84:~$
 ```
 
 The manifest applied above also creates the emissary-system namespace, an extension service and some security
-primitives.
+primitives. Note that "Ambassador" was the original name of the "Emissary" project so there are sill many bits of the
+tool that still use the old name.
 
 Now we can setup the Emissary controller:
 
@@ -1532,16 +1517,219 @@ deployment.apps/emissary-ingress scaled
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Alright, our Ingress controller is all set. Now let's expose a couple of internal services through our Ingress
-controller.
+Alright, Emissary is all set. Now let's expose a couple of internal services through our new Gateway.
+
+
+### Gateway Ingress
+
+When using Emissary's more advanced Gateway functionality, we will need to create two custom resources to send traffic
+to our website service.
+
+- Listener - tells Emissary what ports and protocols to listen on
+- Mapping - tells Emissary which traffic to forward to which service
+
+List the CRDs created by Emissary:
+
+```
+ubuntu@ip-172-31-24-84:~$ kubectl api-resources | grep getambassador
+
+authservices                            getambassador.io/v2                    true         AuthService
+consulresolvers                         getambassador.io/v2                    true         ConsulResolver
+devportals                              getambassador.io/v2                    true         DevPortal
+hosts                                   getambassador.io/v2                    true         Host
+kubernetesendpointresolvers             getambassador.io/v2                    true         KubernetesEndpointResolver
+kubernetesserviceresolvers              getambassador.io/v2                    true         KubernetesServiceResolver
+listeners                               getambassador.io/v3alpha1              true         Listener
+logservices                             getambassador.io/v2                    true         LogService
+mappings                                getambassador.io/v2                    true         Mapping
+modules                                 getambassador.io/v2                    true         Module
+ratelimitservices                       getambassador.io/v2                    true         RateLimitService
+tcpmappings                             getambassador.io/v2                    true         TCPMapping
+tlscontexts                             getambassador.io/v2                    true         TLSContext
+tracingservices                         getambassador.io/v2                    true         TracingService
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Let's create an HTTP Listener for use with our website service:
+
+```
+ubuntu@ip-172-31-24-84:~$ vim listen.yaml
+
+ubuntu@ip-172-31-24-84:~$ cat listen.yaml
+
+apiVersion: getambassador.io/v3alpha1
+kind: Listener
+metadata:
+  name: emissary-ingress-listener
+  namespace: emissary
+spec:
+  port: 80
+  protocol: HTTP
+  securityModel: XFP
+  hostBinding:
+    namespace:
+      from: ALL
+
+ubuntu@ip-172-31-24-84:~$ kubectl apply -f listen.yaml
+
+listener.getambassador.io/emissary-ingress-listener created
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Great now let's add a Mapping that forwards traffic using the `/web` route to our `website` service:
+
+```
+ubuntu@ip-172-31-24-84:~$ vim map.yaml
+
+ubuntu@ip-172-31-24-84:~$ cat map.yaml
+
+apiVersion: getambassador.io/v3alpha1
+kind: Mapping
+metadata:
+  name: website
+spec:
+  hostname: "*"
+  prefix: /web/
+  service: website
+
+ubuntu@ip-172-31-24-84:~$ kubectl apply -f map.yaml
+
+mapping.getambassador.io/website created
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Ok, let's give it a try! From your laptop (outside of the cluster), curl the public IP of you lab system using the
+nodeport for the Emissary Gateway and the `web` route:
+
+```
+$ curl -s http://18.185.35.194:31211/web/
+
+<html><body><h1>It works!</h1></body></html>
+
+$
+```
+
+It works! Try something that won't work:
+
+```
+$ curl -i http://18.185.35.194:31211/engine/
+
+HTTP/1.1 404 Not Found
+date: Thu, 19 May 2022 21:38:04 GMT
+server: envoy
+content-length: 0
+
+$
+```
+
+As you can see, the Emissary control plane deploys an Envoy proxy to actually manage the data path. You can also see
+that the route `engine` is not supported. Let fix that!
 
 
 ### Create Ingress Resources
 
-An Ingress resource is a set of one or more rules for processing inbound traffic received by the Ingress controller.
+The Kubernetes Ingress framework allows us to create ingress rules using the ingress resource type. Ingress resources
+are not as powerful or feature filled as the Emissary CRDs. They are, however, portable and they do provide basic
+functionality. If you can live with the smaller feature set of Ingress resources, perhaps you should, they are more
+widely understood and will work with any decent Kubernetes gateway.
 
+Emissary can of course support normal Ingress resources as well as its advanced CRDs. Let's wrap up this step by creating an ingress rule that routes traffic destined for `/engine` to an nginx deployment.
 
+First create an nginx deployment and a service for it:
 
+```
+ubuntu@ip-172-31-24-84:~$ kubectl create deploy engine --image=nginx
+
+deployment.apps/engine created
+
+ubuntu@ip-172-31-24-84:~$ kubectl expose deploy engine --port=80
+
+service/engine exposed
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Now we can tell Emissary to route to the new service with an Ingress resource. An Ingress resource is a set of one or
+more rules for processing inbound traffic received by the Ingress controller.
+
+Create a standard Kubernetes Ingress for the nginx service:
+
+```
+ubuntu@ip-172-31-24-84:~$ vim ing.yaml
+
+ubuntu@ip-172-31-24-84:~$ cat ing.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.class: ambassador
+  name: web-ingress
+spec:
+  ingressClassName: ambassador
+  rules:
+  - http:
+      paths:
+      - path: /engine
+        pathType: Prefix
+        backend:
+          service:
+            name: engine
+            port:
+              number: 80
+
+ubuntu@ip-172-31-24-84:~$ kubectl apply -f ing.yaml
+
+ingress.networking.k8s.io/web-ingress configured
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Alright now try hitting the `/engine` route again from your laptop:
+
+```
+$ curl -i http://18.185.35.194:31211/engine/
+HTTP/1.1 200 OK
+server: envoy
+date: Thu, 19 May 2022 21:44:06 GMT
+content-type: text/html
+content-length: 615
+last-modified: Tue, 25 Jan 2022 15:03:52 GMT
+etag: "61f01158-267"
+accept-ranges: bytes
+x-envoy-upstream-service-time: 0
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+$
+```
+
+Boom! We now have two services running in our cluster that are exposed through the Emissary Ingress Gateway!!
 
 
 ## 5. Load Balancing
