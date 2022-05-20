@@ -5,17 +5,20 @@
 
 Welcome to the Kubernetes Networking 101 lab!!
 
-This lab will walk you through six hands on exploratory steps, each step will give you a look at a different aspect of
-Kubernetes networking. The steps are designed to take about 10 minutes but make a good jumping off point for hours of
+This lab will walk you through five hands on exploratory steps, each step will give you a look at a different aspect of
+Kubernetes networking. The steps are designed to take about 10-15 minutes but make a good jumping off point for hours of
 further exploration.
 
 The lab systems provided for people joining in-person are 2CPU/4GB/30GB Ubuntu 20.04 cloud instances. If you are virtual
-or running the labs after the tutorial session, the lab should  work fine on any properly configured Kubernetes cluster,
-though you will need admin access to install all of the tools used. If you would like to run a local Ubuntu 20.04 VM on
-your laptop to complete the lab, you can find instructions for doing so here:
+or running the labs after the tutorial session, the lab should work fine on any base Ubuntu 20.04 box. If you would like
+to run a local Ubuntu 20.04 VM on your laptop to complete the lab, you can find instructions for doing so here:
 https://github.com/RX-M/classfiles/blob/master/lab-setup.md
 
 Let the networking begin!!!
+
+> N.B. The lab steps below show you commands to run and sample output from a demo system. Read the lab steps carefully
+> as you will need to change many commands to use your own IP addresses, pod names, etc., all of which will be different
+> from those shown in the lab examples.
 
 
 ## 1. Pod Networking
@@ -38,7 +41,7 @@ To ssh to your machine you will need the IP, key and a username, which is "ubunt
 Download the key file and make it private:
 
 ```
-$ wget <YOUR KEY URL HERE>  net.pem
+$ wget <YOUR KEY URL HERE>  net.pem  # or use a browser
 
 $ chmod 400 net.pem
 ```
@@ -83,7 +86,9 @@ ubuntu@ip-172-31-24-84:~$ curl https://raw.githubusercontent.com/RX-M/classfiles
 100  3446  100  3446    0     0  19691      0 --:--:-- --:--:-- --:--:-- 19691
 # Executing docker install script, commit: 614d05e0e669a0577500d055677bb6f71e822356
 
-...
+
+...  <SOME TIME PASSES HERE> ...
+
 
 You should now deploy a pod network to the cluster.
 Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
@@ -130,7 +135,7 @@ will be inoperable. Time to install Cilium!
 ### Install Cilium
 
 We're going to use Cilium as our CNI networking solution. Cilium is an incubating CNCF project that implements a wide
-range of networking, security and observability features, largely through the Linux kernel eBPF facility. This makes
+range of networking, security and observability features, much of it through the Linux kernel eBPF facility. This makes
 Cilium fast and resource efficient.
 
 Cilium offers a command line tool that we can use to install the CNI components. Download, extract and test the Cilium
@@ -212,7 +217,7 @@ ubuntu@ip-172-31-24-84:~$
 
 Sweet. Cilium is happy so we're happy.
 
-In the installation we just used runs two different types of pods:
+The installation we just used runs two different types of pods:
 
 - Cilium Operator
 - Cilium [the CNI plugin]
@@ -221,9 +226,10 @@ The Cilium "operator" (like a human operator but in code) manages the Cilium CNI
 control plane functions. Kubernetes "operators" run in pods typically managed by a Deployment (runs the pod[s] somewhere
 in the cluster). The CNI plugin networking agents that configure pod network interfaces, generally run under a
 DaemonSet, which ensures that one copy of the CNI plugin pod runs on each node. This way, when an administrator adds a
-new node, the CNI agent is automatically started on the new node by the DaemonSet.
+new node, the CNI agent is automatically started on the new node by the DaemonSet. As "system pods", DaemonSet pods are
+also treated specially by the nodes (there are never evicted and so on).
 
-Now let take a look at the cluster:
+Now let's take a look at the cluster:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl get nodes
@@ -258,7 +264,7 @@ ubuntu@ip-172-31-24-84:~$
 Note that all of the pods we have so far are part of the Kubernetes system itself, so they run in a namespace called
 `kube-system`. We'll run our test pods in the `default` namespace. The `-A` switch shows pods in all namespaces.
 
-These are the pods we have so far:
+These are the pods we have so far (you lab system will have different random/ip suffixes on some of the names):
 
 - cilium-5gp4t - the Cilium CNI plugin on our one and only node
 - cilium-operator-6d86df4fc8-g2z66 - the cilium controller providing control plane functions for cilium
@@ -266,19 +272,19 @@ These are the pods we have so far:
 - coredns-6d4b75cb6d-wvnvv - a DNS replica to ensure DNS never goes down
 - etcd-ip-172-31-24-84 - the Kubernetes database used by the API server to store, well, everything
 - kube-apiserver-ip-172-31-24-84 - the Kubernetes control plane API
-- kube-controller-manager-ip-172-31-24-84 - manager for all of the built in controllers (Deployments, DaemonSets, etc.)
+- kube-controller-manager-ip-172-31-24-84 - manager for the built in controllers (Deployments, DaemonSets, etc.)
 - kube-proxy-929xs - the Kubernetes service proxy, more on this guy in a bit
-- kube-scheduler-ip-172-31-24-84 - the Pod scheduler, which assigns Pods to nodes in the cluster
+- kube-scheduler-ip-172-31-24-84 - the Pod scheduler, which assigns new Pods to nodes in the cluster
 
 Alright, let's look into all of this stuff!
 
 
 ### Explore the network
 
-Let's think over the network environment that we have setup. We have three IP spaces:
+Think over the network environment that we have setup. We have three IP spaces:
 
 - The Public internet: the virtual IP you sshed to is Internet routable over the public internet
-- The Cloud network: the host IPs of the machines you are using in the cloud provider environment make up this network
+- The Cloud network: the host IPs of the machines you are using in the cloud provider environment
 - The Pod network: the Pod IPs used by the containers in your Kubernetes cluster make up the Pod network
 
 Let's look at each of these networks and think about how they operate.
@@ -287,12 +293,12 @@ Let's look at each of these networks and think about how they operate.
 #### The Internet - public IP
 
 In our case, the public IP address we use to ssh into our computer reaches a cloud gateway which is configured to
-translate the public destination address to you Host IP address. This allows us to have a large number of hosts in the
+translate the public destination address to your Host IP address. This allows us to have a large number of hosts in the
 cloud while using a small number of scarce public IPs to map to the few hosts that need to be exposed to the internet.
 Once you have sshed into a cloud instance using a public IP, you can use that system as a "jump box" to ssh into the
 hosts without public IPs.
 
-In most clouds, you can discover a host's public IP by querying the cloud's metadata servers. Try it:
+In many clouds, you can discover a host's public IP by querying the cloud's metadata servers. Try it:
 
 ```
 ubuntu@ip-172-31-24-84:~$ curl http://169.254.169.254/latest/meta-data/public-ipv4
@@ -302,7 +308,8 @@ ubuntu@ip-172-31-24-84:~$ curl http://169.254.169.254/latest/meta-data/public-ip
 ubuntu@ip-172-31-24-84:~$
 ```
 
-In our case this public IP is 1:1 NATed (network address translated) with our Host (private) IP. In some cases, a host may receive a different outbound address (SNAT, source network address translation) when connecting out. This allows
+In our case this public IP is 1:1 NATed (network address translated) with our Host (private) IP. In some cases, a host
+may receive a different outbound address (SNAT, source network address translation) when connecting out. This allows
 even hosts that do not have an inbound public IP to reach out to the internet. You can check your outbound public IP
 address like this:
 
@@ -314,13 +321,13 @@ ubuntu@ip-172-31-24-84:~$ curl -s checkip.dyndns.org | sed -e 's/.*Current IP Ad
 ubuntu@ip-172-31-24-84:~$
 ```
 
-In our case they are the same.
+In our case (1:1 NAT) they are the same.
 
 
 #### The Cloud Network - private host IP
 
 The host network, known as a virtual private cloud (VPC) in many cloud provider environments, uses IP addresses in
-the one of the standard IANA reserved address ranges designed for local communications within a private network:
+one of the standard IANA reserved address ranges designed for local communications within a private network:
 
 - 10.0.0.0/8
 - 172.16.0.0/12
@@ -345,9 +352,12 @@ ubuntu@ip-172-31-24-84:~$ ip address | head
 ubuntu@ip-172-31-24-84:~$
 ```
 
-The ens5 interface is the host's external interface. As you can see our host IP is within the 172.16.0.0/12 address
-space which is not routable over the internet. Because all of the lab machines were created within the same VPC they can
-reach each other within the cloud. Ask you neighbor for their private (host) IP address and try to ping it:
+The ens5 interface is the host's external interface. Our host IP is within the 172.16.0.0/12 address space which is not
+routable over the internet. Because all of the lab machines were created within the same VPC they can reach each other
+within the cloud. Ask your neighbor for their private (host) IP address and try to ping it:
+
+> N.B. There are many machines in this lab environment and they are spread across multiple VPCs. If you can not ping
+> your neighbor's private IP, they are in a different VPC, try their public IP.
 
 ```
 ubuntu@ip-172-31-24-84:~$ ping -c 3 172.31.24.122
@@ -367,8 +377,8 @@ ubuntu@ip-172-31-24-84:~$
 
 #### The Pod Network - Pod IP
 
-If the Internet is the outermost network in our milieu, the Pod network is the innermost. Let's create a pod an examine
-it's network features.
+If the Internet is the outermost network in our milieu, the host network is in the middle and the Pod network is the
+innermost. Let's create a pod and examine it's network features.
 
 Run an Apache Webserver container (`httpd`) in a pod on your Kubernetes cluster:
 
@@ -414,11 +424,11 @@ subnet, making it easy to determine where to route pod traffic amongst the hosts
 Kubernetes scheduled the pod to, in the example above: `ip-172-31-24-84`. In a typical cluster there would be many nodes
 and the Cilium network would allow all of the pods to communicate with each other, regardless of the node they run on.
 This is in fact a Kubernetes requirement, all pods must be able to communicate with all other pods, though it is
-possible to block undesired pod communications with network policies as we will see later.
+possible to block undesired pod communications with network policies.
 
 In this default configuration, traffic between pods on the same node is propagated by the Linux kernel and traffic
-between pods on different nodes uses an overlay network. This overlay network encapsulates traffic between nodes which
-communicate using UDP tunnels between the hosts. Cilium supports both VXLAN and Geneve encapsulation.
+between pods on different nodes uses the host network. Thus the pod network overlays the host network. This overlay
+encapsulates traffic between nodes which in UDP tunnels. Cilium supports both VXLAN and Geneve encapsulation schemes.
 
 Check your tunnel type:
 
@@ -431,16 +441,16 @@ ubuntu@ip-172-31-24-84:~$
 ```
 
 We can also disable tunneling in cilium, in which case the pod packets will be routed to the host network. This makes
-things a little faster and more efficient but it means that you Pod network must integrate with your host network. Using
-a tunneled (aka. overlay) network hides the Pod traffic within host to host communications tunnels making the Pod
+things a little faster and more efficient but it means that your Pod network must integrate with your host network.
+Using a tunneled (aka. overlay) network hides the Pod traffic within host to host communications tunnels making the Pod
 network more independent, avoiding entanglement with the configuration of the cloud or bare metal network used by the
 hosts.
 
 
 ### Test the Pod Network
 
-To make sure that our Pod network is operating correctly we can run a test client Pod with an interactive shell that we
-can run network diagnostics in. Start a Pod running the busybox container image:
+To make sure that our Pod network is operating correctly we can run a test client Pod with an interactive shell, where
+we can perform diagnostics. Start a Pod running the busybox container image:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl run client -it --image=busybox
@@ -465,7 +475,9 @@ address of the new Pod:
 / #
 ```
 
-Note that you IP addresses will likely be different that the examples here. Try pinging the web pod from the client pod:
+Note that your IP addresses will likely be different than the example here. Try pinging the web pod from the client pod:
+
+> N.B. Be sure to use the IP of your web pod from the listing above, not the IP in the example below.
 
 ```
 / # ping -c 3 10.0.0.128
