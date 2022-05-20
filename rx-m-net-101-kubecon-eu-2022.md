@@ -535,18 +535,19 @@ ubuntu@ip-172-31-24-84:~$
 
 A typical pattern in microservice systems is that of replicating a stateless service many times to scale out and to
 provide resilience. In Kubernetes a Deployment can be used to create a ReplicaSet which will in turn create several
-copies of the same pod.  
+copies of the same pod. Each update to the Deployment creates a new ReplicaSet under the covers allowing the Deployment
+to roll forward and back.
 
 Clients of such a replicated pod have challenges. Which pod to connect to? All of them? One of them? Which one?
 
 Kubernetes Services provide an abstraction designed to make it easy for clients to connect to a dynamic, replicated
 set of pods. The default Service type provides a virtual IP address, known as a Cluster IP, which clients can connect
-to. Behind the scenes the Linux kernel forward the connection to one of the pods in the set.
+to. Behind the scenes the Linux kernel forwards the connection to one of the pods in the set.
 
 
 ### Create some Pods
 
-Let's explore the operation of a basic service. to begin create a set of three pods running the httpd web server:
+Let's explore the operation of a basic service. To begin create a set of three pods running the httpd web server:
 
 
 ```
@@ -575,10 +576,11 @@ website-5746f499f-v9shz   1/1     Running   0          61s   app=website,pod-tem
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Typically deployments are created by a Continuous Deployment component of a software pipeline. In the example above we
-used `kubectl create deployment` to quickly establish a set of three httpd pods. As you can see, the pods all have the
-`app=website` label. In Kubernetes, labels are arbitrary key/value pairs associated with resources. Deployments use
-labels to identify the pods they own, however we can also use labels to tell a Service which pods to direct traffic to.
+In perhaps the best case, deployments are created by a Continuous Deployment (CD) server in a software delivery
+pipeline. In the example above we used `kubectl create deployment` to quickly establish a set of three httpd pods. As
+you can see, the pods all have the `app=website` label. In Kubernetes, labels are arbitrary key/value pairs associated
+with resources. Deployments use labels to identify the pods they own. We can also use labels to tell a Service which
+pods to direct traffic to.
 
 
 ### Create a ClusterIP Service
@@ -662,10 +664,10 @@ is:
 - 1001 0100
 - 0001 1110
 
-Note also, that our service specifies a specific port, `80`. Services can list as many port as a user may require. Port
-can be listed in ranges and port can be translated by a service as well. When the target port is different from the
-connecting port, the `targetPort` field can be specified. Our service simply forwards connections on port 80 to port 80
-on one of the pods that match the selector.
+Note also, that our service specifies a specific port, `80`. Services can list as many ports as a user may require.
+Ports can be listed in ranges and ports can be translated by a service as well. When the target port is different from
+the connecting port, the `targetPort` field can be specified. Our service simply forwards connections on port 80 to port
+80 on one of the pods.
 
 Kubernetes creates `endpoint` resources to represent the IP addresses of Pods that have labels that match the service
 selector. Endpoints are a sub-resource of the service that owns them. List the endpoints for the website service:
@@ -698,8 +700,8 @@ Which pod did you hit? Who cares? They are replicas, it doesn't matter, that's t
 ### Service Routing
 
 So how does the connection get redirected? Like all good tech questions, the answer is, it depends. The default
-Kubernetes implementation is to let the kube-proxy (which usually runs on every node in the cluster) modify the
-iptables with DNAT rules.
+Kubernetes implementation is to let the kube-proxy (which usually runs under a DaemonSet on every node in the cluster)
+modify the iptables with DNAT rules (Destination Network Address Translation).
 
 Look for your service in the NAT table (again, be sure to use the IP address of your ClusterIP):
 
@@ -713,7 +715,7 @@ ubuntu@ip-172-31-24-84:~$
 ```
 
 This rule says, jump to chain KUBE-SVC-RYQJBQ5TR32XWAUN when processing tcp connections heading to 10.111.148.30 on
-port 80. Display the rule chain reported by your system:
+port 80. Display the rule chain **reported by your system**:
 
 ```
 ubuntu@ip-172-31-24-84:~$ sudo iptables -L -vn -t nat | grep -A4 'Chain KUBE-SVC-RYQJBQ5TR32XWAUN'
@@ -727,16 +729,17 @@ Chain KUBE-SVC-RYQJBQ5TR32XWAUN (1 references)
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Note that the packets column (the first column titled "pkts") show one packet processed by the second rule in the
+Note that the packets column (the first column titled "pkts") shows one packet processed by the second rule in the
 example above. That tells us which pod processed our curl request.
 
-In the example above we see our three target pods selected at random. Since rules are evaluated sequentially and the
-first matching rule is applied, the first rule is applied 33% of the time (1/3) via the condition:
+In the example above we see our three target pods selected at random. Rules are evaluated sequentially and the first
+matching rule is applied 33% of the time (1/3) via the condition:
 
 `statistic mode random probability 0.33333333349`
 
 If the random generated value is over 0.33... then there are two pods left, so the next rule hits 50% of the time and if
-that rule misses then the final pod is always selected.
+that rule misses then the final pod is always selected. Kube-proxy is constantly updating these rules as pods com and
+go.
 
 Examine one of the pod chains (again select a chain name for your machine's output):
 
@@ -751,8 +754,8 @@ Chain KUBE-SEP-FFKEUBR5SKHPYVCQ (1 references)
 ubuntu@ip-172-31-24-84:~$
 ```
 
-The first rule marks the packet to avoid processing loops and the second rule DNATs (Destination network address
-translates) the packet to the pod ip address and port, 10.0.0.1:80 in the above case.
+The first rule marks the packet to avoid processing loops and the second rule DNATs the packet to the target pod ip
+address and port, 10.0.0.1:80 in the above case.
 
 Now that we know which pod was hit by our curl command, let's verify it by looking at the pod log. First look up the
 name of the pod with the IP from the tables dump and then display the pod logs:
@@ -775,7 +778,7 @@ ubuntu@ip-172-31-24-84:~$
 
 The last entry shows our curl request: "GET / ...".
 
-You can dump the logs of all the pods with the `app=website` label to verify that the other pods have not hits:
+You can dump the logs of all the pods with the `app=website` label to verify that the other pods have no hits:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl logs -l app=website
@@ -823,10 +826,10 @@ When kube-proxy-replacement is enabled, Cilium implements ClusterIPs by updating
 
 ### Service Resilience
 
-You might think a random load balancer might not produce the best results, however given stateless pods in a Kubernetes
-environment are fairly dynamic, this works reasonably well in practice under many circumstances. When a pod is deleted
-client connections are closed or broken, causing them to reconnect to one of the remaining pods, redistributing load
-regularly. Many things cause pods to be deleted:
+You might think a random load balancer might not produce the best results, however stateless pods in a Kubernetes
+environment are fairly dynamic, so this works reasonably well in practice under many circumstances. When a pod is
+deleted client connections are closed or broken, causing them to reconnect to one of the remaining pods, redistributing
+load regularly. Many things cause pods to be deleted:
 
 - Administrators terminating troublesome pods
 - Autoscalers reducing the number of replicas
@@ -835,6 +838,9 @@ regularly. Many things cause pods to be deleted:
 - Node crash
 - Node brought down for maintenance
 - and so on.
+
+If you are doing Cloud Native right, resilience should be the order of the day and deleting Pods (Chaos!) should not be
+a problem!!
 
 Let's see how our service responds to changing pod replicas. Scale away one of your pods and then curl your ClusterIP:
 
@@ -857,7 +863,7 @@ ubuntu@ip-172-31-24-84:~$
 ```
 
 You can try to curl as many times as you like but the request will not fail because the deleted pod has been removed
-from the service routing mesh. Display the endpoints:
+from the service routing mesh (you can check if you like). Display the endpoints:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl get endpoints website
@@ -868,7 +874,7 @@ website   10.0.0.1:80,10.0.0.202:80   69m
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Try deleting a pod and recheck your service endpoints (be sure to use the name of one of your pods):
+Try deleting a pod and recheck your service endpoints (be sure to use the name of **one of your pods**):
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl get pod
@@ -891,9 +897,10 @@ ubuntu@ip-172-31-24-84:~$
 
 What happened?!?
 
-In the example above, the pod with IP `10.0.0.1` was deleted but the deployment's replica set is scaled to 2, so it
-quickly created a replacement pod (`10.0.0.12` in the example). Not that pods managed by deployments are ephemeral and
-when deleted, they stay deleted. Brand new pods are created to take their place.
+In the example above, the pod with IP `10.0.0.1` was deleted but the deployment's replica set is scaled to 2, so the
+ReplicaSet quickly created a replacement pod (`10.0.0.12` in the example). Note that pods managed by Deployments are
+ephemeral and when deleted, they stay deleted. Brand new pods are created to take their place.
+
 
 ### Clean up
 
