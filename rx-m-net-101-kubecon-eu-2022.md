@@ -1684,8 +1684,6 @@ ubuntu@ip-172-31-24-84:~$ cat ing.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  annotations:
-    kubernetes.io/ingress.class: ambassador
   name: web-ingress
 spec:
   ingressClassName: ambassador
