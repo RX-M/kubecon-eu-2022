@@ -409,11 +409,11 @@ ipam                                   cluster-pool
 ubuntu@ip-172-31-24-84:~$
 ```
 
-As configured, all of our pods will be in a network with a 10.x.x.x prefix (10.0.0.0/8). Each host will have a 24 bit
-subnet however (24), making it easy to determine where to route pod traffic amongst the hosts. You can also see the node
-that Kubernetes scheduled the pod to, in the example above: `ip-172-31-24-84`. In a typical cluster there would be many
-nodes and the Cilium network would allow all of the pods to communicate with each other, regardless of the node they run
-on. This is in fact a Kubernetes requirement, all pods must be able to communicate with all other pods, though it is
+As configured, all of our pods will be in a network with a 10.x.x.x prefix (10.0.0.0/8). Each host will have a 24-bit
+subnet, making it easy to determine where to route pod traffic amongst the hosts. You can also see the node that
+Kubernetes scheduled the pod to, in the example above: `ip-172-31-24-84`. In a typical cluster there would be many nodes
+and the Cilium network would allow all of the pods to communicate with each other, regardless of the node they run on.
+This is in fact a Kubernetes requirement, all pods must be able to communicate with all other pods, though it is
 possible to block undesired pod communications with network policies as we will see later.
 
 In this default configuration, traffic between pods on the same node is propagated by the Linux kernel and traffic
@@ -1732,14 +1732,414 @@ $
 Boom! We now have two services running in our cluster that are exposed through the Emissary Ingress Gateway!!
 
 
-## 5. Load Balancing
+## 5. Service Mesh
 
-## 6. Service Mesh
+Now for the finale, service mesh. Let's install Linkerd, a graduated CNCF project. Given the power Linkerd brings to
+Kubernetes networking, it is amazingly easy to install and use.
 
+
+### Install Linkerd
+
+First we'll install the linkerd client:
+
+```
+ubuntu@ip-172-31-24-84:~$ curl -sSfL https://run.linkerd.io/install | sh
+
+Downloading linkerd2-cli-stable-2.11.2-linux-amd64...
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100 44.7M  100 44.7M    0     0  17.0M      0  0:00:02  0:00:02 --:--:-- 19.4M
+Download complete!
+
+Validating checksum...
+Checksum valid.
+
+Linkerd stable-2.11.2 was successfully installed 🎉
+
+
+Add the linkerd CLI to your path with:
+
+  export PATH=$PATH:/home/ubuntu/.linkerd2/bin
+
+Now run:
+
+  linkerd check --pre                     # validate that Linkerd can be installed
+  linkerd install | kubectl apply -f -    # install the control plane into the 'linkerd' namespace
+  linkerd check                           # validate everything worked!
+  linkerd dashboard                       # launch the dashboard
+
+Looking for more? Visit https://linkerd.io/2/tasks
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Pretty easy. Now let's add linkerd to the path in the current shell:
+
+```
+ubuntu@ip-172-31-24-84:~$ export PATH=$PATH:/home/ubuntu/.linkerd2/bin
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Now we can install the Linkerd control plane using the linkerd cli:
+
+```
+ubuntu@ip-172-31-24-84:~$ linkerd install --set proxyInit.runAsRoot=true | kubectl apply -f -
+
+namespace/linkerd created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-identity created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-identity created
+serviceaccount/linkerd-identity created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-destination created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-destination created
+serviceaccount/linkerd-destination created
+secret/linkerd-sp-validator-k8s-tls created
+validatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-sp-validator-webhook-config created
+secret/linkerd-policy-validator-k8s-tls created
+validatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-policy-validator-webhook-config created
+clusterrole.rbac.authorization.k8s.io/linkerd-policy created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-destination-policy created
+role.rbac.authorization.k8s.io/linkerd-heartbeat created
+rolebinding.rbac.authorization.k8s.io/linkerd-heartbeat created
+clusterrole.rbac.authorization.k8s.io/linkerd-heartbeat created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-heartbeat created
+serviceaccount/linkerd-heartbeat created
+customresourcedefinition.apiextensions.k8s.io/servers.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/serverauthorizations.policy.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/serviceprofiles.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/trafficsplits.split.smi-spec.io created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-proxy-injector created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-proxy-injector created
+serviceaccount/linkerd-proxy-injector created
+secret/linkerd-proxy-injector-k8s-tls created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-proxy-injector-webhook-config created
+configmap/linkerd-config created
+secret/linkerd-identity-issuer created
+configmap/linkerd-identity-trust-roots created
+service/linkerd-identity created
+service/linkerd-identity-headless created
+deployment.apps/linkerd-identity created
+service/linkerd-dst created
+service/linkerd-dst-headless created
+service/linkerd-sp-validator created
+service/linkerd-policy created
+service/linkerd-policy-validator created
+deployment.apps/linkerd-destination created
+Warning: batch/v1beta1 CronJob is deprecated in v1.21+, unavailable in v1.25+; use batch/v1 CronJob
+cronjob.batch/linkerd-heartbeat created
+deployment.apps/linkerd-proxy-injector created
+service/linkerd-proxy-injector created
+secret/linkerd-config-overrides created
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Done! Let's check thing to ensure the install went as expected:
+
+```
+ubuntu@ip-172-31-24-84:~$ linkerd check
+
+Linkerd core checks
+===================
+
+kubernetes-api
+--------------
+√ can initialize the client
+√ can query the Kubernetes API
+
+kubernetes-version
+------------------
+√ is running the minimum Kubernetes API version
+√ is running the minimum kubectl version
+
+linkerd-existence
+-----------------
+√ 'linkerd-config' config map exists
+√ heartbeat ServiceAccount exist
+√ control plane replica sets are ready
+√ no unschedulable pods
+√ control plane pods are ready
+‼ cluster networks can be verified
+    the following nodes do not expose a podCIDR:
+        ip-172-31-24-84
+    see https://linkerd.io/2.11/checks/#l5d-cluster-networks-verified for hints
+
+linkerd-config
+--------------
+√ control plane Namespace exists
+√ control plane ClusterRoles exist
+√ control plane ClusterRoleBindings exist
+√ control plane ServiceAccounts exist
+√ control plane CustomResourceDefinitions exist
+√ control plane MutatingWebhookConfigurations exist
+√ control plane ValidatingWebhookConfigurations exist
+√ proxy-init container runs as root user if docker container runtime is used
+
+linkerd-identity
+----------------
+√ certificate config is valid
+√ trust anchors are using supported crypto algorithm
+√ trust anchors are within their validity period
+√ trust anchors are valid for at least 60 days
+√ issuer cert is using supported crypto algorithm
+√ issuer cert is within its validity period
+√ issuer cert is valid for at least 60 days
+√ issuer cert is issued by the trust anchor
+
+linkerd-webhooks-and-apisvc-tls
+-------------------------------
+√ proxy-injector webhook has valid cert
+√ proxy-injector cert is valid for at least 60 days
+√ sp-validator webhook has valid cert
+√ sp-validator cert is valid for at least 60 days
+√ policy-validator webhook has valid cert
+√ policy-validator cert is valid for at least 60 days
+
+linkerd-version
+---------------
+√ can determine the latest version
+√ cli is up-to-date
+
+control-plane-version
+---------------------
+√ can retrieve the control plane version
+√ control plane is up-to-date
+√ control plane and cli versions match
+
+linkerd-control-plane-proxy
+---------------------------
+√ control plane proxies are healthy
+√ control plane proxies are up-to-date
+√ control plane proxies and cli versions match
+
+Status check results are √
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+We get a warning because Cilium does not set the node podCIDR, which is optional, but everything else is green! We're
+ready to service mesh.
+
+Create a deployment with a service to add to the mesh:
+
+```
+ubuntu@ip-172-31-24-84:~$ kubectl create deploy meshweb --image=httpd --port 80
+
+deployment.apps/meshweb created
+
+ubuntu@ip-172-31-24-84:~$ kubectl expose deploy meshweb
+
+service/meshweb exposed
+
+ubuntu@ip-172-31-24-84:~$ kubectl get all -l app=meshweb
+
+NAME                           READY   STATUS    RESTARTS   AGE
+pod/meshweb-76488776bb-krjpn   1/1     Running   0          57s
+
+NAME              TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+service/meshweb   ClusterIP   10.103.228.8   <none>        80/TCP    28s
+
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/meshweb   1/1     1            1           57s
+
+NAME                                 DESIRED   CURRENT   READY   AGE
+replicaset.apps/meshweb-76488776bb   1         1         1       57s
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Now inject the linkerd sidecar into the deployment pods to place it under linkerd control:
+
+```
+ubuntu@ip-172-31-24-84:~$ kubectl get deploy meshweb -o yaml | linkerd inject - | kubectl apply -f -
+
+deployment "meshweb" injected
+
+Warning: resource deployments/meshweb is missing the kubectl.kubernetes.io/last-applied-configuration annotation which is required by kubectl apply. kubectl apply should only be used on resources created declaratively by either kubectl create --save-config or kubectl apply. The missing annotation will be patched automatically.
+deployment.apps/meshweb configured
+
+ubuntu@ip-172-31-24-84:~$ kubectl get all -l app=meshweb
+
+NAME                           READY   STATUS    RESTARTS   AGE
+pod/meshweb-7cb97cfdd9-5qfzp   2/2     Running   0          18s
+
+NAME              TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+service/meshweb   ClusterIP   10.103.228.8   <none>        80/TCP    3m47s
+
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/meshweb   1/1     1            1           4m16s
+
+NAME                                 DESIRED   CURRENT   READY   AGE
+replicaset.apps/meshweb-76488776bb   0         0         0       4m16s
+replicaset.apps/meshweb-7cb97cfdd9   1         1         1       18s
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+We can ignore the annotation warning (it is because we are updating a spec created imperatively with `kubectl create`).
+Notice that the meshweb pod now has 2 contianers! Our linkerd proxy is in place!!
+
+The linkerd inject command simply places the `linkerd.io/inject: enabled` annotation on the pod template. Anytime a pod
+has this annotation (which you can add as part of your devops processing), the pod will be injected with Linkerd during
+admission control. You can also inject all pods in a given namespace by placing the annotation on the namespace.
+
+Let's create a client to add to the mesh:
+
+```
+ubuntu@ip-172-31-24-84:~$ kubectl create deploy meshclient --image=busybox -- sleep 3600
+
+deployment.apps/meshclient created
+
+ubuntu@ip-172-31-24-84:~$ kubectl get pod -l app=meshclient
+
+NAME                          READY   STATUS    RESTARTS   AGE
+meshclient-569cc499d9-m82nr   1/1     Running   0          25s
+
+ubuntu@ip-172-31-24-84:~$ kubectl get deploy meshclient -o yaml | linkerd inject - | kubectl apply -f -
+
+deployment "meshclient" injected
+
+Warning: resource deployments/meshclient is missing the kubectl.kubernetes.io/last-applied-configuration annotation which is required by kubectl apply. kubectl apply should only be used on resources created declaratively by either kubectl create --save-config or kubectl apply. The missing annotation will be patched automatically.
+deployment.apps/meshclient configured
+
+ubuntu@ip-172-31-24-84:~$ kubectl get pods
+
+NAME                              READY   STATUS        RESTARTS   AGE
+pod/engine-68696dd698-2bwss       1/1     Running       0          135m
+pod/meshclient-569cc499d9-m82nr   1/1     Terminating   0          2m44s
+pod/meshclient-6f786d6d78-vpvpc   2/2     Running       0          30s
+pod/meshweb-7cb97cfdd9-5qfzp      2/2     Running       0          7m10s
+pod/website-5746f499f-sb874       1/1     Running       0          4h11m
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Ok, now we have a service and a client under linkerd control. Let's test the connection:
+
+```
+ubuntu@ip-172-31-24-84:~$ kubectl exec -it meshclient-6f786d6d78-vpvpc -c busybox -- sh
+
+/ # wget -qO - 10.103.228.8
+
+<html><body><h1>It works!</h1></body></html>
+
+/ # exit
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Looks like always. However many thing shave changed! For example, all of the traffic between the two pods is now mTLS.
+We can verify this by installing some of the linkerd observability tools. Install the linkerd `viz` components:
+
+```
+ubuntu@ip-172-31-24-84:~$ linkerd viz install | kubectl apply -f -
+
+namespace/linkerd-viz created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-viz-metrics-api created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-viz-metrics-api created
+serviceaccount/metrics-api created
+serviceaccount/grafana created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-viz-prometheus created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-viz-prometheus created
+serviceaccount/prometheus created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-viz-tap created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-viz-tap-admin created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-viz-tap created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-viz-tap-auth-delegator created
+serviceaccount/tap created
+rolebinding.rbac.authorization.k8s.io/linkerd-linkerd-viz-tap-auth-reader created
+secret/tap-k8s-tls created
+apiservice.apiregistration.k8s.io/v1alpha1.tap.linkerd.io created
+role.rbac.authorization.k8s.io/web created
+rolebinding.rbac.authorization.k8s.io/web created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-viz-web-check created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-viz-web-check created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-viz-web-admin created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-viz-web-api created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-viz-web-api created
+serviceaccount/web created
+server.policy.linkerd.io/admin created
+serverauthorization.policy.linkerd.io/admin created
+server.policy.linkerd.io/proxy-admin created
+serverauthorization.policy.linkerd.io/proxy-admin created
+service/metrics-api created
+deployment.apps/metrics-api created
+server.policy.linkerd.io/metrics-api created
+serverauthorization.policy.linkerd.io/metrics-api created
+configmap/grafana-config created
+service/grafana created
+deployment.apps/grafana created
+server.policy.linkerd.io/grafana created
+serverauthorization.policy.linkerd.io/grafana created
+configmap/prometheus-config created
+service/prometheus created
+deployment.apps/prometheus created
+service/tap created
+deployment.apps/tap created
+server.policy.linkerd.io/tap-api created
+serverauthorization.policy.linkerd.io/tap created
+clusterrole.rbac.authorization.k8s.io/linkerd-tap-injector created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-tap-injector created
+serviceaccount/tap-injector created
+secret/tap-injector-k8s-tls created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-tap-injector-webhook-config created
+service/tap-injector created
+deployment.apps/tap-injector created
+server.policy.linkerd.io/tap-injector-webhook created
+serverauthorization.policy.linkerd.io/tap-injector created
+service/web created
+deployment.apps/web created
+serviceprofile.linkerd.io/metrics-api.linkerd-viz.svc.cluster.local created
+serviceprofile.linkerd.io/prometheus.linkerd-viz.svc.cluster.local created
+serviceprofile.linkerd.io/grafana.linkerd-viz.svc.cluster.local created
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Linkerd can now tell us which pods are connected to each other and which connection are secured with mTLS. In a new ssh
+session, create a persistent connection between the client and the web server with netcat:
+
+```
+ubuntu@ip-172-31-24-84:~$ kubectl exec pod/meshclient-6f786d6d78-vpvpc -it -c busybox -- sh
+
+/ # nc 10.103.228.8 80
+
+```
+
+Now return to your interactive session and as linkerd visualization to display the edges between pods:
+
+```
+ubuntu@ip-172-31-24-84:~$ linkerd viz edges pod
+
+SRC                           DST                           SRC_NS        DST_NS    SECURED
+meshclient-6f786d6d78-vpvpc   meshweb-7cb97cfdd9-5qfzp      default       default   √
+prometheus-5db449486f-xt54k   meshclient-6f786d6d78-vpvpc   linkerd-viz   default   √
+prometheus-5db449486f-xt54k   meshweb-7cb97cfdd9-5qfzp      linkerd-viz   default   √
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+As you can see, the meshclient pod is connected to the meshweb pod and the connection is secured. You can also see the
+linkerd prometheus instance scraping metrics from the proxies in both of our pods.
+
+For example display the stats for the default namespace:
+
+```
+ubuntu@ip-172-31-24-84:~$ linkerd viz stat ns/default
+
+NAME      MESHED   SUCCESS      RPS   LATENCY_P50   LATENCY_P95   LATENCY_P99   TCP_CONN
+default      2/4   100.00%   0.6rps           1ms           1ms           1ms          2
+
+ubuntu@ip-172-31-24-84:~$
+```
+
+Well, that's enough hacking for one day. We hope you learned something new, fun and/or interesting about Kubernetes
+networking!!!
 
 <br>
 
-Congratulations you have completed the lab! Amazing!!
+Congratulations you have completed the lab! Amazing work!!
 
 <br>
 
