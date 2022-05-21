@@ -565,7 +565,7 @@ deployment.apps/website created
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Display the deployment and the pods it created:
+Display the Deployment and the pods it created:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl get deploy
@@ -583,7 +583,7 @@ website-5746f499f-v9shz   1/1     Running   0          61s   app=website,pod-tem
 ubuntu@ip-172-31-24-84:~$
 ```
 
-In perhaps the best case, deployments are created by a Continuous Deployment (CD) server in a software delivery
+In perhaps the best case, Deployments are created by a Continuous Deployment (CD) server in a software delivery
 pipeline. In the example above we used `kubectl create deployment` to quickly establish a set of three httpd pods. As
 you can see, the pods all have the `app=website` label. In Kubernetes, labels are arbitrary key/value pairs associated
 with resources. Deployments use labels to identify the pods they own. We can also use labels to tell a Service which
@@ -904,7 +904,7 @@ ubuntu@ip-172-31-24-84:~$
 
 What happened?!?
 
-In the example above, the pod with IP `10.0.0.1` was deleted but the deployment's replica set is scaled to 2, so the
+In the example above, the pod with IP `10.0.0.1` was deleted but the Deployment's replica set is scaled to 2, so the
 ReplicaSet quickly created a replacement pod (`10.0.0.12` in the example). Note that pods managed by Deployments are
 ephemeral and when deleted, they stay deleted. Brand new pods are created to take their place.
 
@@ -930,7 +930,7 @@ Next up is DNS!!
 Most Kubernetes distributions use CoreDNS as the "built-in" DNS service for Kubernetes. The Kubernetes DNS can be used
 to automatically resolve a service name to it's ClusterIP. Let's try it with our website service!
 
-Create a website deployment and service:
+Create a website Deployment and service:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl create deployment website --replicas=3 --image=httpd
@@ -1036,8 +1036,8 @@ Recognize that IP address? It's our cluster DNS service. Services give dynamic s
 
 ### Headless Services
 
-As we have seen, pods under a deployment can come and go. Services can create a stable identity for a dynamic set of
-pods in the form of a service DNS name. What if our individual pods have identity?
+As we have seen, pods under a Deployment can come and go. Services can create a stable identity at the head of a dynamic
+set of pods in the form of a service DNS name and a ClusterIP. What if our individual pods have identity?
 
 Pods that have a unique identity within a set are identified by their state and are therefore not technically
 microservices (which are stateless and ephemeral). Examples include Cassandra Pods, Kafka Pods and Nats Pods. Each of
@@ -1133,9 +1133,11 @@ headlesswebsite.default.svc.cluster.local       service = 0 50 80 10-0-0-202.hea
 / #
 ```
 
-If you want to lookup a pod by name you need a headless service and a StatefulSet. A StatefulSet is much like a
-Deployment in that it manages a set of pods, however a StatefulSet creates pods with stable identities, in other words,
-stable DNS names. As we saw earlier, deleting a Deployment pod causes a brand new pod with a brand new name to be
+Headless services are useful in scenarios where you would like to retrieve the list of pod IPs for a given service.
+However, if you want to lookup a pod by name, a Deployment is not the right controller. Deployments create pods with
+random names and disposable identities. What you need is a headless service and a StatefulSet. A StatefulSet is much
+like a Deployment in that it manages a set of pods, however a StatefulSet creates pods with stable identities, that
+means stable DNS names. As we saw earlier, deleting a Deployment pod causes a brand new pod with a brand new name to be
 created. Deleting a StatefulSet pod causes the exact same pod name to be recreated, and, if specified, attached to the
 exact same set of storage volumes.
 
@@ -1319,8 +1321,7 @@ In this step we'll take a look at ways to reach our cluster based services from 
 ### NodePort Services
 
 As demonstrated earlier, ClusterIPs are virtual, they only exist as rules in IPTables or within some other forwarding
-component of the kernel on nodes in the cluster. So how do we reach a service from outside of the cluster when the
-kube-proxy and CNI plugins creating these forwarding instructions only run on cluster nodes.
+component of the kernel on nodes in the cluster. So how do we reach a service from outside of the cluster?
 
 Well, there are various ways to get into a cluster but one important way is through a NodePort Service. A NodePort
 service uses a specific port on every host computer in the Kubernetes cluster to forward traffic to pods on the pod
@@ -1403,7 +1404,7 @@ ubuntu@ip-172-31-24-84:~$
 NodePort enabled!
 
 
-### Setup an Ingress Controller / Gateway
+### Ingress Controllers and Gateways
 
 The downside of externally exposed services, like NodePorts, is that each set of pods needs its own service. Your
 clients (in house developers, third party developers, etc.) probably do not want to keep track of a bunch of service
@@ -1417,7 +1418,11 @@ several good, free, open source options. In this lab we will use Emissary, a CNC
 proxy, another CNCF project. Emissary implements not only the features required by Kubernetes Ingress but also defines
 many custom Resources we can use to access functionality well beyond the generic (but portable) basic Kubernetes
 Ingress. Tools like Emissary are often called Gateways because they provide many advanced features used to control
-inbound application traffic.
+inbound application traffic, beyond the basics defined by Kubernetes Ingress.
+
+> N.B. Progress is underway to create a more powerful "Kubernetes Gateway API" based on Envoy. This effort is being
+> supported by the teams behind Envoy, Emissary and Contour (a CNCF Envoy based project which is very similar to
+> Emissary).
 
 Installing Emissary is easy. Like many Kubernetes addons, Emissary prefers to run in its own namespace.
 
@@ -1496,7 +1501,8 @@ deployment.apps/emissary-ingress-agent created
 ubuntu@ip-172-31-24-84:~$
 ```
 
-It can take a bit for all of the container images to download and start so let's wait until the Emissary deployment is available:
+It can take a bit for all of the container images to download and start so let's wait until the Emissary Deployment is
+available:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl -n emissary wait --for condition=available --timeout=90s deploy emissary-ingress
@@ -1536,7 +1542,7 @@ ubuntu@ip-172-31-24-84:~$
 The emissary-ingress service is of type LoadBalancer, which includes NodePorts of 31211 mapped to port 80 and 31361
 mapped to port 443.
 
-The emissary-ingress deployment is scaled to 3. Given we are on a single node cluster, lets drop that down to 1:
+The emissary-ingress Deployment is scaled to 3. Given we are on a single node cluster, lets drop that down to 1:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl scale deployment.apps/emissary-ingress --replicas=1 -n emissary
@@ -1630,8 +1636,8 @@ mapping.getambassador.io/website created
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Ok, let's give it a try! From your laptop (outside of the cluster), curl the public IP of you lab system using the
-nodeport for the Emissary Gateway and the `web` route:
+Ok, let's give it a try! From your laptop (outside of the cluster), curl the public IP of your lab system using the
+NodePort for the Emissary Gateway and the `web` route:
 
 ```
 $ curl -s http://18.185.35.194:31211/web/
@@ -1665,9 +1671,9 @@ are not as powerful or feature filled as the Emissary CRDs. They are, however, p
 functionality. If you can live with the smaller feature set of Ingress resources, perhaps you should, they are more
 widely understood and will work with any decent Kubernetes gateway.
 
-Emissary can of course support normal Ingress resources as well as its advanced CRDs. Let's wrap up this step by creating an ingress rule that routes traffic destined for `/engine` to an nginx deployment.
+Emissary can of course support normal Ingress resources as well as its advanced CRDs. Let's wrap up this step by creating an ingress rule that routes traffic destined for `/engine` to an nginx Deployment.
 
-First create an nginx deployment and a service for it:
+First create an nginx Deployment and a service for it:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl create deploy engine --image=nginx
@@ -1809,7 +1815,7 @@ ubuntu@ip-172-31-24-84:~$ export PATH=$PATH:/home/ubuntu/.linkerd2/bin
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Now we can install the Linkerd control plane using the linkerd cli:
+Finally let's install the Linkerd control plane using the linkerd cli:
 
 ```
 ubuntu@ip-172-31-24-84:~$ linkerd install --set proxyInit.runAsRoot=true | kubectl apply -f -
@@ -1862,7 +1868,7 @@ secret/linkerd-config-overrides created
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Done! Let's check thing to ensure the install went as expected:
+Done! Let's check things to ensure the install went as expected:
 
 ```
 ubuntu@ip-172-31-24-84:~$ linkerd check
@@ -1948,7 +1954,7 @@ ubuntu@ip-172-31-24-84:~$
 We get a warning because Cilium does not set the node podCIDR, which is optional, but everything else is green! We're
 ready to service mesh.
 
-Create a deployment with a service to add to the mesh:
+Create a Deployment with a service to add to the mesh:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl create deploy meshweb --image=httpd --port 80
@@ -1976,7 +1982,7 @@ replicaset.apps/meshweb-76488776bb   1         1         1       57s
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Now inject the linkerd sidecar into the deployment pods to place it under linkerd control:
+Now inject the linkerd sidecar into the Deployment pods to place it under linkerd control:
 
 ```
 ubuntu@ip-172-31-24-84:~$ kubectl get deploy meshweb -o yaml | linkerd inject - | kubectl apply -f -
@@ -2005,7 +2011,7 @@ ubuntu@ip-172-31-24-84:~$
 ```
 
 We can ignore the annotation warning (it is because we are updating a spec created imperatively with `kubectl create`).
-Notice that the meshweb pod now has 2 contianers! Our linkerd proxy is in place!!
+Notice that the meshweb pod now has 2 containers! Our linkerd proxy is in place!!
 
 The linkerd inject command simply places the `linkerd.io/inject: enabled` annotation on the pod template. Anytime a pod
 has this annotation (which you can add as part of your devops processing), the pod will be injected with Linkerd during
@@ -2056,7 +2062,7 @@ ubuntu@ip-172-31-24-84:~$ kubectl exec -it meshclient-6f786d6d78-vpvpc -c busybo
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Looks like always. However many thing shave changed! For example, all of the traffic between the two pods is now mTLS.
+Looks like always. However many things have changed! For example, all of the traffic between the two pods is now mTLS.
 We can verify this by installing some of the linkerd observability tools. Install the linkerd `viz` components:
 
 ```
@@ -2124,7 +2130,7 @@ serviceprofile.linkerd.io/grafana.linkerd-viz.svc.cluster.local created
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Linkerd can now tell us which pods are connected to each other and which connection are secured with mTLS. In a new ssh
+Linkerd can now tell us which pods are connected to each other and which connections are secured with mTLS. In a new ssh
 session, create a persistent connection between the client and the web server with netcat:
 
 ```
@@ -2134,7 +2140,7 @@ ubuntu@ip-172-31-24-84:~$ kubectl exec pod/meshclient-6f786d6d78-vpvpc -it -c bu
 
 ```
 
-Now return to your interactive session and as linkerd visualization to display the edges between pods:
+Now return to your interactive session and ask linkerd visualization to display the edges between pods:
 
 ```
 ubuntu@ip-172-31-24-84:~$ linkerd viz edges pod
@@ -2148,9 +2154,9 @@ ubuntu@ip-172-31-24-84:~$
 ```
 
 As you can see, the meshclient pod is connected to the meshweb pod and the connection is secured. You can also see the
-linkerd prometheus instance scraping metrics from the proxies in both of our pods.
+linkerd Prometheus instance scraping metrics from the proxies in both of our pods.
 
-For example display the stats for the default namespace:
+This will allows us to display the networking stats for the default namespace:
 
 ```
 ubuntu@ip-172-31-24-84:~$ linkerd viz stat ns/default
