@@ -49,7 +49,7 @@ $ chmod 400 net.pem
 Now log in to your assigned cloud instance with ssh:
 
 > N.B. ssh instructions for mac/windows/linux are here if you need them:
->     https://github.com/RX-M/classfiles/blob/master/ssh-setup.md):
+>     https://github.com/RX-M/classfiles/blob/master/ssh-setup.md
 
 ```
 $ ssh -i net.pem ubuntu@<YOUR LAB MACHINE IP HERE>
@@ -69,10 +69,12 @@ Last login: Tue May 17 09:46:05 2022 from 172.58.27.10
 ubuntu@ip-172-31-24-84:~$
 ```
 
+You're in!
+
 
 ### Install Kubernetes
 
-You're in! You can poke around if you like (who, id, free, ps, whathaveyou) but we are on the clock, so the next step is
+You can poke around if you like (who, id, free, ps, whathaveyou) but we are on the clock, so the next step is
 to stand up a Kubernetes cluster. Run the RX-M K8s install script as follows:
 
 > N.B. This will take a minute or two.
@@ -140,6 +142,9 @@ Cilium fast and resource efficient.
 
 Cilium offers a command line tool that we can use to install the CNI components. Download, extract and test the Cilium
 CLI:
+
+
+#### Download
 
 ```
 ubuntu@ip-172-31-24-84:~$ wget https://github.com/cilium/cilium-cli/releases/latest/download/cilium-linux-amd64.tar.gz
@@ -240,7 +245,7 @@ ip-172-31-24-84   Ready    control-plane   91m   v1.24.0
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Yes! Our node is now "Ready". We have a working, network enabled Kubernetes cluster.
+Yes! Our node is now "Ready". We have a working, network enabled, Kubernetes cluster.
 
 Take a look at the pods running in the cluster:
 
@@ -264,13 +269,13 @@ ubuntu@ip-172-31-24-84:~$
 Note that all of the pods we have so far are part of the Kubernetes system itself, so they run in a namespace called
 `kube-system`. We'll run our test pods in the `default` namespace. The `-A` switch shows pods in all namespaces.
 
-These are the pods we have so far (you lab system will have different random/ip suffixes on some of the names):
+These are the pods we have so far (your lab system will have different random suffixes on some of the names):
 
 - cilium-5gp4t - the Cilium CNI plugin on our one and only node
 - cilium-operator-6d86df4fc8-g2z66 - the cilium controller providing control plane functions for cilium
 - coredns-6d4b75cb6d-fzsbw - the Kubernetes DNS server
 - coredns-6d4b75cb6d-wvnvv - a DNS replica to ensure DNS never goes down
-- etcd-ip-172-31-24-84 - the Kubernetes database used by the API server to store, well, everything
+- etcd-ip-172-31-24-84 - the Kubernetes database used by the API server to store... well, everything
 - kube-apiserver-ip-172-31-24-84 - the Kubernetes control plane API
 - kube-controller-manager-ip-172-31-24-84 - manager for the built in controllers (Deployments, DaemonSets, etc.)
 - kube-proxy-929xs - the Kubernetes service proxy, more on this guy in a bit
@@ -308,7 +313,7 @@ ubuntu@ip-172-31-24-84:~$ curl http://169.254.169.254/latest/meta-data/public-ip
 ubuntu@ip-172-31-24-84:~$
 ```
 
-In our case this public IP is 1:1 NATed (network address translated) with our Host (private) IP. In some cases, a host
+In our case this public IP is 1:1 NATed (network address translated) with our Host private IP. In some cases, a host
 may receive a different outbound address (SNAT, source network address translation) when connecting out. This allows
 even hosts that do not have an inbound public IP to reach out to the internet. You can check your outbound public IP
 address like this:
@@ -324,7 +329,7 @@ ubuntu@ip-172-31-24-84:~$
 In our case (1:1 NAT) they are the same.
 
 
-#### The Cloud Network - private host IP
+#### The Cloud Network - host private IP
 
 The host network, known as a virtual private cloud (VPC) in many cloud provider environments, uses IP addresses in
 one of the standard IANA reserved address ranges designed for local communications within a private network:
@@ -428,7 +433,7 @@ possible to block undesired pod communications with network policies.
 
 In this default configuration, traffic between pods on the same node is propagated by the Linux kernel and traffic
 between pods on different nodes uses the host network. Thus the pod network overlays the host network. This overlay
-encapsulates traffic between nodes which in UDP tunnels. Cilium supports both VXLAN and Geneve encapsulation schemes.
+encapsulates traffic between nodes in UDP tunnels. Cilium supports both VXLAN and Geneve encapsulation schemes.
 
 Check your tunnel type:
 
@@ -449,7 +454,7 @@ hosts.
 
 ### Test the Pod Network
 
-To make sure that our Pod network is operating correctly we can run a test client Pod with an interactive shell, where
+To make sure that our Pod network is operating correctly we can run a test client Pod with an interactive shell where
 we can perform diagnostics. Start a Pod running the busybox container image:
 
 ```
@@ -464,6 +469,7 @@ address of the new Pod:
 
 ```
 / # ip a
+
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue qlen 1000
     link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
     inet 127.0.0.1/8 scope host lo
@@ -477,10 +483,11 @@ address of the new Pod:
 
 Note that your IP addresses will likely be different than the example here. Try pinging the web pod from the client pod:
 
-> N.B. Be sure to use the IP of your web pod from the listing above, not the IP in the example below.
+> N.B. Be sure to use the IP of your web pod from the earlier get pod command, not the IP in the example below.
 
 ```
 / # ping -c 3 10.0.0.128
+
 PING 10.0.0.128 (10.0.0.128): 56 data bytes
 64 bytes from 10.0.0.128: seq=0 ttl=63 time=0.502 ms
 64 bytes from 10.0.0.128: seq=1 ttl=63 time=0.202 ms
@@ -507,7 +514,7 @@ Success! We have a functioning Pod network, congratulations!!
 
 ### Clean up
 
-To start our service exploration with a clean slate let's delete the web and client pods we created above. Exit out of
+To start our next step with a clean slate let's delete the web and client pods we created above. Exit out of
 the client pod:
 
 ```
@@ -629,10 +636,10 @@ ubuntu@ip-172-31-24-84:~$
 
 > N. B. The `kubernetes` service is built in and front ends the cluster's API Server.
 
-Our service, `website`, is of type ClusterIP and has an IP address of 10.111.148.30. Much like pod IP addresses, the
-range for ClusterIPs can be defined at the time the cluster is setup. Unlike Pod IPs, which are typically assigned by
-the CNI plugin, Cluster IPs are assigned by the Kubernetes control plane when the service is created. The Cluster IP
-range must not overlap with any IP ranges assigned to nodes or pods.
+Our service, `website`, is of type ClusterIP and has an IP address of 10.111.148.30 in the example. Much like pod IP
+addresses, the range for ClusterIPs can be defined at the time the cluster is setup. Unlike Pod IPs, which are typically
+assigned by the CNI plugin, Cluster IPs are assigned by the Kubernetes control plane when the service is created. The
+Cluster IP range must not overlap with any IP ranges assigned to nodes or pods.
 
 Examine the default ClusterIP CIDR (Classless Inter-Domain Routing) address range:
 
@@ -703,7 +710,7 @@ So how does the connection get redirected? Like all good tech questions, the ans
 Kubernetes implementation is to let the kube-proxy (which usually runs under a DaemonSet on every node in the cluster)
 modify the iptables with DNAT rules (Destination Network Address Translation).
 
-Look for your service in the NAT table (again, be sure to use the IP address of your ClusterIP):
+Look for your service in the NAT table (again, be sure to use the IP address of **your** ClusterIP):
 
 ```
 ubuntu@ip-172-31-24-84:~$ sudo iptables -L -vn -t nat | grep '10.111.148.30'
@@ -937,6 +944,9 @@ service/website exposed
 ubuntu@ip-172-31-24-84:~$
 ```
 
+What the heck does expose do? It is (an oddly named) command that creates a service for an existing controller. The
+service created has the same name as the controller (`website` in our case) and uses the same selector.  
+
 
 ### Service DNS
 
@@ -961,7 +971,7 @@ Now try hitting the website service by name:
 
 Wow! Free DNS!! How does this work?
 
-It works like normal DNS pretty much. Step one when faced with a name and not an IP address is to look up the name in
+It works like normal DNS pretty much. Step one, when faced with a name and not an IP address, is to look up the name in
 DNS. On Linux the /etc/resolv.conf file is where we find the address of the name server to use for name resolution:
 
 ```
@@ -975,7 +985,7 @@ options ndots:5
 ```
 
 As it turns out this file is injected into our container at the request of the Kubelet based on the Kubernetes and Pod
-configuration settings. the address `10.96.0.10` is, wait for it ..., the ClusterIP of the CoreDNS Service. We'll verify
+configuration settings. The address `10.96.0.10` is, wait for it ..., the ClusterIP of the CoreDNS Service. We'll verify
 this in a few minutes.
 
 Note the second line in the resolv.conf. The name `website` is not a fully qualified DNS name. Remember that Kubernetes
@@ -1021,12 +1031,12 @@ kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   37h
 ubuntu@ip-172-31-24-84:~$
 ```
 
-Recognize that IP address? It's our cluster DNS service. Services give dynamic sets of pods a stable identity.
+Recognize that IP address? It's our cluster DNS service. Services give dynamic sets of pods a stable "head" identity.
 
 
 ### Headless Services
 
-As we have seen, pods under a deployment can come and go. Services can create a stable identity for as dynamic set of
+As we have seen, pods under a deployment can come and go. Services can create a stable identity for a dynamic set of
 pods in the form of a service DNS name. What if our individual pods have identity?
 
 Pods that have a unique identity within a set are identified by their state and are therefore not technically
