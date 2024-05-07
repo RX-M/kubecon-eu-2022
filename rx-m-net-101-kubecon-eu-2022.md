@@ -1,4 +1,4 @@
-![RX-M, llc.](http://rx-m.io/rxm-cnc.svg)
+![RX-M LLC](http://rx-m.com/rxm-cnc.svg)
 
 
 # Kubernetes Networking 101
